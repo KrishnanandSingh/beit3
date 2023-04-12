@@ -37,14 +37,13 @@ def prepare_args():
                         help='images input size')
     parser.add_argument('--sentencepiece_model', type=str, required=True, 
                         help='Sentencepiece model path for the pretrained model.')
-    parser.add_argument('--num_max_bpe_tokens', type=int, default=64)
     parser.add_argument('--batch_size', default=64, type=int)
-    parser.add_argument('--eval_batch_size', default=None, type=int)
     parser.add_argument('--num_workers', default=10, type=int)
-    parser.add_argument('--pin_mem', action='store_true',
-                        help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
                         help='dataset path')
+    parser.add_argument('--num_max_bpe_tokens', type=int, default=64)
+    parser.add_argument('--pin_mem', action='store_true',
+                        help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
 
     arg_list = [
         '--input_size', '480',

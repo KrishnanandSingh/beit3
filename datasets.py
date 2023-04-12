@@ -342,7 +342,6 @@ def create_dataset_by_split(args, split, is_train=True):
     data_path = args.data_path
     num_max_bpe_tokens = args.num_max_bpe_tokens
     batch_size = args.batch_size
-    eval_batch_size = args.eval_batch_size
     sentencepiece_model_path = args.sentencepiece_model
     num_workers = args.num_workers
     pin_mem = args.pin_mem
@@ -354,18 +353,11 @@ def create_dataset_by_split(args, split, is_train=True):
     ])
     tokenizer = get_sentencepiece_model_for_beit3(sentencepiece_model_path)
 
-    opt_kwargs = {}
     dataset = VQAv2Dataset(
         data_path=data_path, split=split, 
         transform=transform, tokenizer=tokenizer, 
-        num_max_bpe_tokens=num_max_bpe_tokens, 
-        task=None, **opt_kwargs, 
+        num_max_bpe_tokens=num_max_bpe_tokens
     )
-    if eval_batch_size:
-        batch_size = eval_batch_size
-    else:
-        batch_size = int(batch_size * 1.5)
-
     sampler = torch.utils.data.SequentialSampler(dataset)
     
     dataloader =  torch.utils.data.DataLoader(
