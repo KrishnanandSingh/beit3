@@ -139,16 +139,7 @@ class VQAv2Dataset(BaseDataset):
 
     @staticmethod
     def get_index_files(split, task=None):
-        if split == "train":
-            return ("vqa.train.jsonl", "vqa.trainable_val.jsonl")
-        elif split == "val":
-            return ("vqa.rest_val.jsonl", )
-        elif split == "test":
-            return ("vqa.test.jsonl", )
-        elif split == "test-dev":
-            return ("vqa.test-dev.jsonl", )            
-        else:
-            raise RuntimeError("split %s is not found!" % split)
+        return ("vqa.test.jsonl", )
 
     def __getitem__(self, index: int):
         data = super().__getitem__(index)
