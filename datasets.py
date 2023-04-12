@@ -13,13 +13,10 @@ import glob
 from collections import defaultdict, Counter
 from torchvision import transforms
 from torchvision.datasets.folder import default_loader
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD, IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
-from timm.data.transforms import RandomResizedCropAndInterpolation
-from timm.data import create_transform
+from timm.data.constants import IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
 
 import utils
 from glossary import normalize_word
-from randaug import RandomAugment
 
 
 class BaseDataset(torch.utils.data.Dataset):
@@ -334,28 +331,44 @@ class VQAv2Dataset(BaseDataset):
                 }
                 writer.write("%s\n" % json.dumps(to_json))
 
-task2dataset = {
-    "vqav2": VQAv2Dataset
-}
+
+def get_sentencepiece_model_for_beit3(sentencepiece_model_path):
+    from transformers import XLMRobertaTokenizer
+    return XLMRobertaTokenizer(sentencepiece_model_path)
 
 
-def create_dataloader(dataset, is_train, batch_size, num_workers, pin_mem, dist_eval=False):
-    if is_train or dist_eval:
-        num_tasks = utils.get_world_size()
-        global_rank = utils.get_rank()
+def create_dataset_by_split(args, split, is_train=True):
+    input_size = args.input_size
+    data_path = args.data_path
+    num_max_bpe_tokens = args.num_max_bpe_tokens
+    batch_size = args.batch_size
+    eval_batch_size = args.eval_batch_size
+    sentencepiece_model_path = args.sentencepiece_model
+    num_workers = args.num_workers
+    pin_mem = args.pin_mem
 
-        if not is_train and dist_eval and len(dataset) % num_tasks != 0:
-            print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-                    'This will slightly alter validation results as extra duplicate entries are added to achieve '
-                    'equal num of samples per-process.')
+    transform = transforms.Compose([
+        transforms.Resize((input_size, input_size), interpolation=3), 
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD)
+    ])
+    tokenizer = get_sentencepiece_model_for_beit3(sentencepiece_model_path)
 
-        sampler = torch.utils.data.DistributedSampler(
-            dataset, num_replicas=num_tasks, rank=global_rank, shuffle=is_train
-        )
+    opt_kwargs = {}
+    dataset = VQAv2Dataset(
+        data_path=data_path, split=split, 
+        transform=transform, tokenizer=tokenizer, 
+        num_max_bpe_tokens=num_max_bpe_tokens, 
+        task=None, **opt_kwargs, 
+    )
+    if eval_batch_size:
+        batch_size = eval_batch_size
     else:
-        sampler = torch.utils.data.SequentialSampler(dataset)
+        batch_size = int(batch_size * 1.5)
+
+    sampler = torch.utils.data.SequentialSampler(dataset)
     
-    return torch.utils.data.DataLoader(
+    dataloader =  torch.utils.data.DataLoader(
         dataset, sampler=sampler,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -363,77 +376,4 @@ def create_dataloader(dataset, is_train, batch_size, num_workers, pin_mem, dist_
         drop_last=is_train,
         collate_fn=utils.merge_batch_tensors_by_dict_key,
     )
-
-
-def build_transform(is_train, args):
-    if args.task in ["imagenet"]:
-        return build_imagenet_transform(is_train, args)
-
-    if is_train:
-        t = [
-            RandomResizedCropAndInterpolation(args.input_size, scale=(0.5, 1.0), interpolation=args.train_interpolation), 
-            transforms.RandomHorizontalFlip(),
-        ]
-        if args.randaug:
-            t.append(
-                RandomAugment(
-                    2, 7, isPIL=True, 
-                    augs=[
-                        'Identity','AutoContrast','Equalize','Brightness','Sharpness', 
-                        'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate', 
-                    ]))
-        t += [
-            transforms.ToTensor(),
-            transforms.Normalize(mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD), 
-        ]
-        t = transforms.Compose(t)
-    else:
-        t = transforms.Compose([
-            transforms.Resize((args.input_size, args.input_size), interpolation=3), 
-            transforms.ToTensor(),
-            transforms.Normalize(mean=IMAGENET_INCEPTION_MEAN, std=IMAGENET_INCEPTION_STD)
-        ])
-
-    return t
-
-
-def get_sentencepiece_model_for_beit3(args):
-    from transformers import XLMRobertaTokenizer
-    return XLMRobertaTokenizer(args.sentencepiece_model)
-
-
-def create_dataset_by_split(args, split, is_train=True):
-    transform = build_transform(is_train=is_train, args=args)
-    dataset_class = task2dataset[args.task]
-    tokenizer = get_sentencepiece_model_for_beit3(args)
-
-    opt_kwargs = {}
-    if args.task in ["coco_captioning", "nocaps"]:
-        opt_kwargs["mask_prob"] = args.captioning_mask_prob
-
-    dataset = dataset_class(
-        data_path=args.data_path, split=split, 
-        transform=transform, tokenizer=tokenizer, 
-        num_max_bpe_tokens=args.num_max_bpe_tokens, 
-        task=args.task, **opt_kwargs, 
-    )
-    if is_train:
-        batch_size = args.batch_size
-    elif hasattr(args, "eval_batch_size") and args.eval_batch_size is not None:
-        batch_size = args.eval_batch_size
-    else:
-        batch_size = int(args.batch_size * 1.5)
-
-    return create_dataloader(
-        dataset, is_train=is_train, batch_size=batch_size, 
-        num_workers=args.num_workers, pin_mem=args.pin_mem, dist_eval=args.dist_eval, 
-    )
-
-
-def create_downstream_dataset(args, is_eval=False):
-    if is_eval:
-        return create_dataset_by_split(args, split="test", is_train=False)
-    else:
-        return \
-            create_dataset_by_split(args, split="train", is_train=True), \
-            create_dataset_by_split(args, split="val", is_train=True)
+    return dataloader
