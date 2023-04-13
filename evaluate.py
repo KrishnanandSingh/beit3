@@ -8,7 +8,7 @@ from timeit import default_timer
 import requests
 import torch
 
-from dataloader import get_data_loader
+from dataloader import get_data_loader, get_dataset
 
 
 @contextmanager
@@ -97,6 +97,7 @@ def main():
     with elapsed_timer() as elapsed:
         with torch.no_grad():
             for data in data_loader:
+                # print(data)
                 for tensor_key in data.keys():
                     data[tensor_key] = torch.stack([data[tensor_key][0]]).to(device, non_blocking=False)
 
@@ -108,5 +109,42 @@ def main():
         
         print(f'On device {device.type}, Took {elapsed():.3f}s, Num predictions: {len(predictions)}, First prediction: {predictions[0]}')
 
+def one_dataset():
+    ensure_pre_requisites()
+    device = setup_device()
+    model = load_model(device)
+    dataset = get_dataset()
+
+    predictions = []
+    def eval_batch(model, label2ans, image, language_tokens, padding_mask, labels=None, qid=None):
+        logits = model(
+            image=image, question=language_tokens, 
+            padding_mask=padding_mask)
+        _, preds = logits.max(-1)
+        for image_id, pred in zip(qid, preds):
+            predictions.append({
+                "question_id": image_id.item(), 
+                "answer":  label2ans[pred.item()], 
+            })
+    with elapsed_timer() as elapsed:
+        with torch.no_grad():
+            data_item = dataset[0]
+            data_item['qid'] = torch.tensor(data_item['qid'])
+            data_item['language_tokens'] = torch.tensor(data_item['language_tokens'])
+            data_item['padding_mask'] = torch.tensor(data_item['padding_mask'])
+            for tensor_key in data_item.keys():
+                data_item[tensor_key] = torch.stack([data_item[tensor_key]]).to(device, non_blocking=False)
+
+            if device.type=='cuda':
+                with torch.cuda.amp.autocast():
+                    eval_batch(model=model, label2ans=dataset.label2ans, **data_item)
+            else:
+                eval_batch(model=model, label2ans=dataset.label2ans, **data_item)
+        
+        print(f'On device {device.type}, Took {elapsed():.3f}s, Num predictions: {len(predictions)}, First prediction: {predictions[0]}')
+
 if __name__=='__main__':
+    print('Using signle item from data loader')
     main()
+    print('Using single item from dataset')
+    one_dataset()

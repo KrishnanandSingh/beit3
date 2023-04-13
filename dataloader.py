@@ -27,15 +27,17 @@
 !tar -xf vqa-data.tgz
 
 '''
-from datasets import create_dataset_by_split
+import datasets
+
 
 def prepare_args():
     import argparse
 
-    parser = argparse.ArgumentParser('BEiT fine-tuning and evaluation script for image classification', add_help=False)
+    parser = argparse.ArgumentParser(
+        'BEiT fine-tuning and evaluation script for image classification', add_help=False)
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size')
-    parser.add_argument('--sentencepiece_model', type=str, required=True, 
+    parser.add_argument('--sentencepiece_model', type=str, required=True,
                         help='Sentencepiece model path for the pretrained model.')
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--num_workers', default=10, type=int)
@@ -58,5 +60,34 @@ def prepare_args():
 
 def get_data_loader():
     args = prepare_args()
-    data_loader = create_dataset_by_split(args, split="test", is_train=False)
+    data_loader = datasets.create_dataset_by_split(args)
     return data_loader
+
+
+def get_dataset():
+    args = prepare_args()
+    input_size = args.input_size
+    data_path = args.data_path
+    num_max_bpe_tokens = args.num_max_bpe_tokens
+    sentencepiece_model_path = args.sentencepiece_model
+    dataset = datasets.get_dataset(
+        input_size, data_path, num_max_bpe_tokens, sentencepiece_model_path)
+    return dataset
+
+
+if __name__ == '__main__':
+    import torch
+    dataset = get_dataset()
+    data_item = dataset[0]
+    data_item['qid'] = torch.tensor(data_item['qid'])
+    data_item['language_tokens'] = torch.tensor(data_item['language_tokens'])
+    data_item['padding_mask'] = torch.tensor(data_item['padding_mask'])
+    for tensor_key in data_item.keys():
+        data_item[tensor_key] = torch.stack([data_item[tensor_key]])
+
+    data_loader = get_data_loader()
+    for data in data_loader:
+        for tensor_key in data.keys():
+            data[tensor_key] = torch.stack([data[tensor_key][0]])
+    print(data)
+    print(data_item)
