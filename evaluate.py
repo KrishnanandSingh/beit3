@@ -1,4 +1,5 @@
 import os
+import hashlib
 import shutil
 import sys
 import zipfile
@@ -21,7 +22,7 @@ def elapsed_timer():
 
 def __download_hook(count, block_size, total_size):
     """A hook to report the download progress."""
-    percent = int(count * block_size * 100 / total_size)
+    percent = min(int(count * block_size * 100 / total_size), 100)
     sys.stdout.write(f'\rDownloading: {percent}%')
     sys.stdout.flush()
 
@@ -48,11 +49,24 @@ def download(url, dir, unzip=False, extracted_file_name=None):
         print(f'\nExtracting : {file_path}')
         shutil.unpack_archive(file_path, dir, format='zip')
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            # If there is only one file in zip and user want to rename it
+            # If there is only one file in zip and user wants to rename it
             if len(zip_ref.namelist()) == 1 and extracted_file_name:
                 print('renaming file')
                 extracted_file_path = os.path.join(dir, extracted_file_name)
                 shutil.move(src=os.path.join(dir, zip_ref.namelist()[0]), dst=extracted_file_path)
+
+
+def calculate_md5_checksum(file_path, chunk_size=8192):
+    hash_object = hashlib.md5()
+    # Read the file in chunks and update the hash object incrementally
+    with open(file_path, 'rb') as file:
+        while True:
+            data = file.read(chunk_size)
+            if not data:
+                break
+            hash_object.update(data)
+    checksum = hash_object.hexdigest()
+    return checksum
 
 def download_sentence_piece_model(download_dir):
     sentence_piece_model_url = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit3/sentencepiece/beit3.spm'
@@ -60,10 +74,37 @@ def download_sentence_piece_model(download_dir):
     if not os.path.isfile(os.path.join(download_dir, file_name)):
         download(sentence_piece_model_url, download_dir)
 
+def download_ans2label(download_dir):
+    ans2label_url = 'https://github.com/KrishnanandSingh/beit3/releases/download/v0.2.0/answer2label.zip'
+    if not os.path.isfile(os.path.join(download_dir, 'answer2label.txt')):
+        download(ans2label_url, download_dir, unzip=True, extracted_file_name='answer2label.txt')
+
+def download_large_model(download_dir):
+    beit_large_model_md5_url = 'https://github.com/KrishnanandSingh/beit3/releases/download/v0.2.0/model.md5'
+    md5_file_name = beit_large_model_md5_url.split('/')[-1]
+    md5_file_path = os.path.join(download_dir, md5_file_name)
+    if not os.path.isfile(md5_file_path):
+        download(beit_large_model_md5_url, download_dir)
+    required_md5_checksum = open(md5_file_path).read()
+
+    beit_large_model_url = 'https://github.com/KrishnanandSingh/beit3/releases/download/v0.2.0/model.pth'
+    model_file_name = beit_large_model_url.split('/')[-1]
+    model_file_path = os.path.join(download_dir, model_file_name)
+    if not os.path.isfile(model_file_path):
+        download(beit_large_model_url, download_dir)
+    
+    checksum = calculate_md5_checksum(model_file_path)
+    if checksum != required_md5_checksum:
+        print(f'model file corrupt: {checksum} != {required_md5_checksum} Redownloading..')
+        os.remove(model_file_path)
+        download(beit_large_model_url, download_dir)
+
 def ensure_pre_requisites():
     download_dir = 'data'
     os.makedirs(download_dir, exist_ok=True)
     download_sentence_piece_model(download_dir)
+    download_ans2label(download_dir)
+    download_large_model(download_dir)
 
 def load_model(device):
     beit_model = torch.load('data/model.pth', map_location=device)
