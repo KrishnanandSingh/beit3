@@ -1,3 +1,13 @@
+'''
+git clone --branch data-processor --depth 1 https://github.com/KrishnanandSingh/beit3.git
+cd beit3
+pip install -r requirements.txt
+python evaluate.py
+
+# If running on raspberry pi Ubuntu, in the requirements file replace torch with 
+"torch @ https://download.pytorch.org/whl/torch-2.0.0-cp310-cp310-manylinux2014_aarch64.whl"
+
+'''
 import os
 import hashlib
 import shutil
@@ -93,6 +103,7 @@ def download_large_model(download_dir):
     if not os.path.isfile(model_file_path):
         download(beit_large_model_url, download_dir)
     
+    print('Ensuring checksum of the large model')
     checksum = calculate_md5_checksum(model_file_path)
     if checksum != required_md5_checksum:
         print(f'model file corrupt: {checksum} != {required_md5_checksum} Redownloading..')
@@ -105,12 +116,15 @@ def ensure_pre_requisites():
     download_sentence_piece_model(download_dir)
     download_ans2label(download_dir)
     download_large_model(download_dir)
+    print('Pre-requisites files check complete')
 
 def load_model(device):
+    print('Loading model')
     beit_model = torch.load('data/model.pth', map_location=device)
     model = beit_model
     model.to(device)
     model.eval()
+    print(f'Model loaded on device {device}, ready to infer')
     return model
 
 def setup_device():
@@ -138,8 +152,9 @@ def one_dataset():
 
     question = 'What is the cat doing?'
     question_id = 54668644678
-
+    print('Preprocessing')
     data_item = processor.process_data(image, question, question_id)
+    print('Inferring')
     prediction = None
     with elapsed_timer() as elapsed:
         with torch.no_grad():
