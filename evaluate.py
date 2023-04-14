@@ -8,7 +8,7 @@ from timeit import default_timer
 import requests
 import torch
 
-from dataloader import get_data_loader, get_dataset
+import datasets
 
 
 @contextmanager
@@ -54,15 +54,16 @@ def download(url, dir, unzip=False, extracted_file_name=None):
                 extracted_file_path = os.path.join(dir, extracted_file_name)
                 shutil.move(src=os.path.join(dir, zip_ref.namelist()[0]), dst=extracted_file_path)
 
-def download_sentence_piece_model():
+def download_sentence_piece_model(download_dir):
     sentence_piece_model_url = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit3/sentencepiece/beit3.spm'
-    dir = 'data'
     file_name = sentence_piece_model_url.split('/')[-1]
-    if not os.path.isfile(os.path.join(dir, file_name)):
-        download(sentence_piece_model_url, dir)
+    if not os.path.isfile(os.path.join(download_dir, file_name)):
+        download(sentence_piece_model_url, download_dir)
 
 def ensure_pre_requisites():
-    download_sentence_piece_model()
+    download_dir = 'data'
+    os.makedirs(download_dir, exist_ok=True)
+    download_sentence_piece_model(download_dir)
 
 def load_model(device):
     beit_model = torch.load('data/model.pth', map_location=device)
@@ -113,10 +114,30 @@ def one_dataset():
     ensure_pre_requisites()
     device = setup_device()
     model = load_model(device)
-    dataset = get_dataset()
+    input_size = 480
+    ans2label_file_path = 'data/answer2label.txt'
+    sentencepiece_model_path = 'data/beit3.spm'
+    processor, label2ans = datasets.get_beit3_processor(
+        input_size, ans2label_file_path, sentencepiece_model_path)
+    
+    import requests
+    from PIL import Image
+
+    print('Downloading image')
+    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+    image = Image.open(requests.get(url, stream=True).raw)
+
+    question = 'What is the cat doing?'
+    question_id = 54668644678
+
+    data_item = processor.process_data(image, question, question_id)
+    import torch
+    for tensor_key in data_item.keys():
+        data_item[tensor_key] = torch.stack([data_item[tensor_key]])
+    print(data_item)
 
     predictions = []
-    def eval_batch(model, label2ans, image, language_tokens, padding_mask, labels=None, qid=None):
+    def eval_batch(model, label2ans, image, language_tokens, padding_mask, qid=None):
         logits = model(
             image=image, question=language_tokens, 
             padding_mask=padding_mask)
@@ -128,23 +149,20 @@ def one_dataset():
             })
     with elapsed_timer() as elapsed:
         with torch.no_grad():
-            data_item = dataset[0]
-            data_item['qid'] = torch.tensor(data_item['qid'])
-            data_item['language_tokens'] = torch.tensor(data_item['language_tokens'])
-            data_item['padding_mask'] = torch.tensor(data_item['padding_mask'])
+            # data_item['qid'] = torch.tensor(data_item['qid'])
+            # data_item['language_tokens'] = torch.tensor(data_item['language_tokens'])
+            # data_item['padding_mask'] = torch.tensor(data_item['padding_mask'])
             for tensor_key in data_item.keys():
                 data_item[tensor_key] = torch.stack([data_item[tensor_key]]).to(device, non_blocking=False)
 
             if device.type=='cuda':
                 with torch.cuda.amp.autocast():
-                    eval_batch(model=model, label2ans=dataset.label2ans, **data_item)
+                    eval_batch(model=model, label2ans=label2ans, **data_item)
             else:
-                eval_batch(model=model, label2ans=dataset.label2ans, **data_item)
+                eval_batch(model=model, label2ans=label2ans, **data_item)
         
         print(f'On device {device.type}, Took {elapsed():.3f}s, Num predictions: {len(predictions)}, First prediction: {predictions[0]}')
 
 if __name__=='__main__':
-    print('Using signle item from data loader')
-    main()
     print('Using single item from dataset')
     one_dataset()
