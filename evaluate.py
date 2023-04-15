@@ -4,12 +4,12 @@ cd beit3
 pip install -r requirements.txt
 python evaluate.py
 
-# If running on raspberry pi Ubuntu, in the requirements file replace torch with 
+# If running on raspberry pi Ubuntu, in the requirements file replace torch with
 "torch @ https://download.pytorch.org/whl/torch-2.0.0-cp310-cp310-manylinux2014_aarch64.whl"
 
 '''
-import os
 import hashlib
+import os
 import shutil
 import sys
 import zipfile
@@ -25,10 +25,11 @@ import datasets
 @contextmanager
 def elapsed_timer():
     start = default_timer()
-    elapser = lambda: default_timer() - start
+    def elapser(): return default_timer() - start
     yield lambda: elapser()
     end = default_timer()
-    elapser = lambda: end-start
+    def elapser(): return end-start
+
 
 def __download_hook(count, block_size, total_size):
     """A hook to report the download progress."""
@@ -53,8 +54,8 @@ def download(url, dir, unzip=False, extracted_file_name=None):
             chunk_count += 1
             __download_hook(chunk_count, block_size, total_size)
             # Write data to file
-            f.write(chunk)        
-    
+            f.write(chunk)
+
     if unzip is True:
         print(f'\nExtracting : {file_path}')
         shutil.unpack_archive(file_path, dir, format='zip')
@@ -63,7 +64,8 @@ def download(url, dir, unzip=False, extracted_file_name=None):
             if len(zip_ref.namelist()) == 1 and extracted_file_name:
                 print('renaming file')
                 extracted_file_path = os.path.join(dir, extracted_file_name)
-                shutil.move(src=os.path.join(dir, zip_ref.namelist()[0]), dst=extracted_file_path)
+                shutil.move(src=os.path.join(
+                    dir, zip_ref.namelist()[0]), dst=extracted_file_path)
 
 
 def calculate_md5_checksum(file_path, chunk_size=8192):
@@ -78,16 +80,20 @@ def calculate_md5_checksum(file_path, chunk_size=8192):
     checksum = hash_object.hexdigest()
     return checksum
 
+
 def download_sentence_piece_model(download_dir):
     sentence_piece_model_url = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit3/sentencepiece/beit3.spm'
     file_name = sentence_piece_model_url.split('/')[-1]
     if not os.path.isfile(os.path.join(download_dir, file_name)):
         download(sentence_piece_model_url, download_dir)
 
+
 def download_ans2label(download_dir):
     ans2label_url = 'https://github.com/KrishnanandSingh/beit3/releases/download/v0.2.0/answer2label.zip'
     if not os.path.isfile(os.path.join(download_dir, 'answer2label.txt')):
-        download(ans2label_url, download_dir, unzip=True, extracted_file_name='answer2label.txt')
+        download(ans2label_url, download_dir, unzip=True,
+                 extracted_file_name='answer2label.txt')
+
 
 def download_large_model(download_dir):
     beit_large_model_md5_url = 'https://github.com/KrishnanandSingh/beit3/releases/download/v0.2.0/model.md5'
@@ -102,13 +108,15 @@ def download_large_model(download_dir):
     model_file_path = os.path.join(download_dir, model_file_name)
     if not os.path.isfile(model_file_path):
         download(beit_large_model_url, download_dir)
-    
+
     print('Ensuring checksum of the large model')
     checksum = calculate_md5_checksum(model_file_path)
     if checksum != required_md5_checksum:
-        print(f'model file corrupt: {checksum} != {required_md5_checksum} Redownloading..')
+        print(
+            f'model file corrupt: {checksum} != {required_md5_checksum} Redownloading..')
         os.remove(model_file_path)
         download(beit_large_model_url, download_dir)
+
 
 def ensure_pre_requisites():
     download_dir = 'data'
@@ -117,6 +125,7 @@ def ensure_pre_requisites():
     download_ans2label(download_dir)
     download_large_model(download_dir)
     print('Pre-requisites files check complete')
+
 
 def load_model(device):
     print('Loading model')
@@ -127,11 +136,13 @@ def load_model(device):
     print(f'Model loaded on device {device}, ready to infer')
     return model
 
+
 def setup_device():
     # device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     device = torch.device('cpu')
     print(f'using {device}')
     return device
+
 
 def one_dataset():
     ensure_pre_requisites()
@@ -142,7 +153,7 @@ def one_dataset():
     sentencepiece_model_path = 'data/beit3.spm'
     processor, label2ans = datasets.get_beit3_processor(
         input_size, ans2label_file_path, sentencepiece_model_path)
-    
+
     import requests
     from PIL import Image
 
@@ -160,14 +171,17 @@ def one_dataset():
         with torch.no_grad():
             for tensor_key in data_item.keys():
                 data_item[tensor_key] = torch.stack([data_item[tensor_key]])
-            logits = model(image=data_item['image'], question=data_item['language_tokens'], padding_mask=data_item['padding_mask'])
+            logits = model(
+                image=data_item['image'], question=data_item['language_tokens'], padding_mask=data_item['padding_mask'])
             _, preds = logits.max(-1)
             prediction = {
-                "question_id": data_item['qid'][0].item(), 
-                "answer":  label2ans[preds[0].item()], 
+                "question_id": data_item['qid'][0].item(),
+                "answer":  label2ans[preds[0].item()],
             }
-    print(f'On device {device.type}, Took {elapsed():.3f}s, Prediction: {prediction}')
+    print(
+        f'On device {device.type}, Took {elapsed():.3f}s, Prediction: {prediction}')
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     print('Using single item from dataset')
     one_dataset()

@@ -6,9 +6,10 @@
 # --------------------------------------------------------'
 
 import json
+
 import torch
-from torchvision import transforms
 from timm.data.constants import IMAGENET_INCEPTION_MEAN, IMAGENET_INCEPTION_STD
+from torchvision import transforms
 
 
 class BeitVQADataProcessor():

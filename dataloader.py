@@ -29,7 +29,6 @@
 '''
 import datasets
 
-
 if __name__ == '__main__':
     input_size = 480
     ans2label_file_path = 'data/answer2label.txt'
