@@ -1,4 +1,7 @@
 '''
+# Use python3
+python -m venv beit3
+source ~/beit3/bin/activate
 git clone --branch data-processor --depth 1 https://github.com/KrishnanandSingh/beit3.git
 cd beit3
 pip install -r requirements.txt
@@ -138,8 +141,8 @@ def load_model(device):
 
 
 def setup_device():
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+    # device = torch.device('cpu')
     print(f'using {device}')
     return device
 
