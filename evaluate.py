@@ -1,14 +1,14 @@
 '''
 # Use python3
-python -m venv beit3
-source ~/beit3/bin/activate
+python -m venv beit-pi
+source ~/beit-pi/bin/activate
 git clone --branch data-processor --depth 1 https://github.com/KrishnanandSingh/beit3.git
 cd beit3
 pip install -r requirements.txt
 python evaluate.py
 
-# If running on raspberry pi Ubuntu, in the requirements file replace torch with
-"torch @ https://download.pytorch.org/whl/torch-2.0.0-cp310-cp310-manylinux2014_aarch64.whl"
+# If running on raspberry pi Ubuntu, do
+pip install -r requirements-pi.txt
 
 '''
 import hashlib
